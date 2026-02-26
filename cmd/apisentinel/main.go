@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/princetheprogrammer/apisentinel/internal/middleware"
 	"github.com/princetheprogrammer/apisentinel/internal/proxy"
@@ -10,25 +12,33 @@ import (
 )
 
 func main() {
-	// 1. Start a mock backend server in a goroutine
-	backendPort := "9000"
-	go testserver.StartTestServer(backendPort)
+	// Flags and Env Vars
+	proxyPort := getEnv("PROXY_PORT", "8080")
+	backendURL := getEnv("BACKEND_URL", "")
+	rateLimit := flag.Int("limit", 10, "Requests per minute")
+	flag.Parse()
+
+	// If no backend is provided, start the mock one for convenience
+	if backendURL == "" {
+		backendPort := "9000"
+		backendURL = "http://localhost:" + backendPort
+		log.Printf("📦 No BACKEND_URL provided. Starting mock backend on :%s", backendPort)
+		go testserver.StartTestServer(backendPort)
+	}
 
 	// 2. Setup the Proxy
-	targetURL := "http://localhost:" + backendPort
-	proxyServer, err := proxy.NewProxy(targetURL)
+	proxyServer, err := proxy.NewProxy(backendURL)
 	if err != nil {
 		log.Fatalf("❌ Failed to create proxy: %v", err)
 	}
 
 	// Initialize Middlewares
-	rl := middleware.NewRateLimiter(10) // 10 requests per minute
+	rl := middleware.NewRateLimiter(*rateLimit)
 	inspector := middleware.NewSecurityInspector()
 
 	// 3. Start the API Sentinel Proxy Server
-	proxyPort := "8080"
 	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
-	log.Printf("🛡️ Forwarding traffic to: %s", targetURL)
+	log.Printf("🛡️ Forwarding traffic to: %s", backendURL)
 
 	// Create a multiplexer to handle /stats separately
 	mux := http.NewServeMux()
@@ -53,4 +63,11 @@ func main() {
 	if err := http.ListenAndServe(":"+proxyPort, mux); err != nil {
 		log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
 	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
 }
