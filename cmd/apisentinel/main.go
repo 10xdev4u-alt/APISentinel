@@ -69,7 +69,7 @@ func main() {
 	
 	var dlp *middleware.DLPMiddleware
 	if cfg.Security.EnableDLP {
-		dlp = middleware.NewDLPMiddleware()
+		dlp = middleware.NewDLPMiddleware(cfg.Security.DLPAction)
 	}
 
 	// 5. Start the API Sentinel Proxy Server

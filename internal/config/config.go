@@ -27,9 +27,10 @@ type RouteConfig struct {
 }
 
 type SecurityConfig struct {
-	EnableXSS  bool `yaml:"enable_xss"`
-	EnableSQLi bool `yaml:"enable_sqli"`
-	EnableDLP  bool `yaml:"enable_dlp"`
+	EnableXSS  bool   `yaml:"enable_xss"`
+	EnableSQLi bool   `yaml:"enable_sqli"`
+	EnableDLP  bool   `yaml:"enable_dlp"`
+	DLPAction  string `yaml:"dlp_action"` // "block" or "mask"
 }
 
 // LoadConfig reads the YAML configuration file.

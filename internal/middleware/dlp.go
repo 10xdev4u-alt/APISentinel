@@ -12,10 +12,15 @@ import (
 // DLPMiddleware scans outgoing responses for sensitive data leaks.
 type DLPMiddleware struct {
 	patterns []Pattern
+	action   string // "block" or "mask"
 }
 
-func NewDLPMiddleware() *DLPMiddleware {
+func NewDLPMiddleware(action string) *DLPMiddleware {
+	if action == "" {
+		action = "block"
+	}
 	return &DLPMiddleware{
+		action: action,
 		patterns: []Pattern{
 			{
 				Name:    "Credit Card Leak",
@@ -62,23 +67,47 @@ func (dlp *DLPMiddleware) Middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(blw, r)
 
 		responseBody := blw.body.Bytes()
+		modified := false
+		
 		for _, p := range dlp.patterns {
 			if p.Regexp.Match(responseBody) {
-				log.Printf("🛑 DLP ALERT [%s]: Blocked outgoing response to %s", p.Name, r.RemoteAddr)
-				requestID := r.Header.Get("X-Request-ID")
-				logger.LogEvent(requestID, r.RemoteAddr, r.Method, r.URL.Path, "DLP Violation: "+p.Name, "Backend attempted to leak sensitive data")
+				if dlp.action == "block" {
+					log.Printf("🛑 DLP BLOCK [%s]: Blocked outgoing response to %s", p.Name, r.RemoteAddr)
+					requestID := r.Header.Get("X-Request-ID")
+					logger.LogEvent(requestID, r.RemoteAddr, r.Method, r.URL.Path, "DLP Violation: "+p.Name, "Backend attempted to leak sensitive data (Blocked)")
 
-				w.Header().Del("Content-Length")
-				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-				w.Header().Set("X-Sentinel-DLP", "Blocked")
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Security Error: Data Loss Prevention policy triggered. Response blocked."))
-				return
+					w.Header().Del("Content-Length")
+					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+					w.Header().Set("X-Sentinel-DLP", "Blocked")
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Security Error: Data Loss Prevention policy triggered. Response blocked."))
+					return
+				} else if dlp.action == "mask" {
+					log.Printf("🎭 DLP MASK [%s]: Masking sensitive data for %s", p.Name, r.RemoteAddr)
+					requestID := r.Header.Get("X-Request-ID")
+					logger.LogEvent(requestID, r.RemoteAddr, r.Method, r.URL.Path, "DLP Masking: "+p.Name, "Sensitive data was masked in the response")
+					
+					// Masking logic: replace all but the last 4 characters with *
+					responseBody = p.Regexp.ReplaceAllFunc(responseBody, func(match []byte) []byte {
+						if len(match) <= 4 {
+							return bytes.Repeat([]byte("*"), len(match))
+						}
+						masked := bytes.Repeat([]byte("*"), len(match)-4)
+						return append(masked, match[len(match)-4:]...)
+					})
+					modified = true
+				}
 			}
 		}
 
-		// If we reach here, it's safe. Write the original status and body.
+		// If we reached here, the response is either safe or masked.
 		if blw.headerWritten {
+			// If we masked, the content length might have changed (though with * it usually doesn't, 
+			// but it's good practice to recalculate or let Go handle it).
+			if modified {
+				w.Header().Del("Content-Length")
+				w.Header().Set("X-Sentinel-DLP", "Masked")
+			}
 			w.WriteHeader(blw.statusCode)
 		}
 		w.Write(responseBody)

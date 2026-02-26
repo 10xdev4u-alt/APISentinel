@@ -8,9 +8,9 @@ routes:
   - path: "/"
     targets:
       - "http://localhost:9000"
-      - "http://localhost:9002"
 
 security:
   enable_xss: true
   enable_sqli: true
   enable_dlp: true
+  dlp_action: "mask"
