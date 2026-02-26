@@ -73,6 +73,7 @@ func main() {
 
 	// Create a multiplexer
 	mux := http.NewServeMux()
+	mux.HandleFunc("/health", middleware.HealthHandler("1.0.0"))
 	mux.HandleFunc("/stats", middleware.StatsHandler)
 	mux.HandleFunc("/block", blocklist.AdminHandler)
 	mux.HandleFunc("/unblock", blocklist.AdminHandler)
