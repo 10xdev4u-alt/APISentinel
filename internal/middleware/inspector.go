@@ -90,5 +90,6 @@ func (si *SecurityInspector) isMalicious(data string) bool {
 
 func (si *SecurityInspector) block(w http.ResponseWriter, source string) {
 	log.Printf("🛡️ API Sentinel: Blocking request from %s due to malicious content", source)
+	IncrementBlocked()
 	http.Error(w, "Forbidden: Malicious activity detected", http.StatusForbidden)
 }

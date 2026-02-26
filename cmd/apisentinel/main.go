@@ -30,14 +30,27 @@ func main() {
 	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
 	log.Printf("🛡️ Forwarding traffic to: %s", targetURL)
 
-	// Apply Middlewares
-	handler := middleware.Chain(proxyServer,
+	// Create a multiplexer to handle /stats separately
+	mux := http.NewServeMux()
+	mux.HandleFunc("/stats", middleware.StatsHandler)
+
+	// Apply Middlewares to the Proxy
+	proxyWithMiddleware := middleware.Chain(proxyServer,
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				middleware.IncrementTotal()
+				next.ServeHTTP(w, r)
+			})
+		},
 		inspector.Middleware,
 		rl.Middleware,
 		middleware.SecurityHeaders,
 	)
 
-	if err := http.ListenAndServe(":"+proxyPort, handler); err != nil {
+	// Route everything else to the proxy
+	mux.Handle("/", proxyWithMiddleware)
+
+	if err := http.ListenAndServe(":"+proxyPort, mux); err != nil {
 		log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
 	}
 }

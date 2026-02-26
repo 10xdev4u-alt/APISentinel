@@ -49,6 +49,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		if count > rl.limit {
 			log.Printf("⚠️ Rate Limit Exceeded for IP: %s", ip)
+			IncrementBlocked()
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
 		}
