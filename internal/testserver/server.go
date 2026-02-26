@@ -12,10 +12,8 @@ func StartTestServer(port string) {
 		fmt.Fprintf(w, "🚀 Hello from Backend Server on port %s!", port)
 	})
 
-	fmt.Printf("📦 Test Backend Server starting on :%s...
-", port)
+	fmt.Printf("📦 Test Backend Server starting on :%s...\n", port)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		fmt.Printf("❌ Backend Server Error: %v
-", err)
+		fmt.Printf("❌ Backend Server Error: %v\n", err)
 	}
 }
