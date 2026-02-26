@@ -56,6 +56,7 @@ func main() {
 	// Initialize Middlewares
 	rl := middleware.NewRateLimiter(*rateLimit)
 	inspector := middleware.NewSecurityInspector()
+	dlp := middleware.NewDLPMiddleware()
 	adminKey := getEnv("ADMIN_KEY", "secret-sentinel-key")
 	blocklist := middleware.NewIPBlocklist(adminKey)
 
@@ -78,6 +79,7 @@ func main() {
 			})
 		},
 		blocklist.Middleware,
+		dlp.Middleware,
 		inspector.Middleware,
 		rl.Middleware,
 		middleware.SecurityHeaders,
