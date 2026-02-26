@@ -5,7 +5,60 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sort"
+	"strings"
 )
+
+// MultiTargetProxy routes requests to different backends based on path prefixes.
+type MultiTargetProxy struct {
+	Routes map[string]*httputil.ReverseProxy
+}
+
+func NewMultiTargetProxy() *MultiTargetProxy {
+	return &MultiTargetProxy{
+		Routes: make(map[string]*httputil.ReverseProxy),
+	}
+}
+
+func (m *MultiTargetProxy) AddRoute(prefix string, target string) error {
+	targetURL, err := url.Parse(target)
+	if err != nil {
+		return err
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+
+	// Custom Director to handle path stripping if needed
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		log.Printf("🛡️ API Sentinel: Forwarding [%s] %s to %s", req.Method, req.URL.Path, target)
+	}
+
+	m.Routes[prefix] = proxy
+	return nil
+}
+
+func (m *MultiTargetProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Get prefixes and sort them by length descending
+	prefixes := make([]string, 0, len(m.Routes))
+	for k := range m.Routes {
+		prefixes = append(prefixes, k)
+	}
+	sort.Slice(prefixes, func(i, j int) bool {
+		return len(prefixes[i]) > len(prefixes[j])
+	})
+
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(r.URL.Path, prefix) {
+			m.Routes[prefix].ServeHTTP(w, r)
+			return
+		}
+	}
+
+	// Default fallback if no route matches (could be handled in main)
+	http.Error(w, "Not Found: No route matches this path", http.StatusNotFound)
+}
 
 // NewProxy creates a new ReverseProxy for the given target URL.
 func NewProxy(target string) (*httputil.ReverseProxy, error) {

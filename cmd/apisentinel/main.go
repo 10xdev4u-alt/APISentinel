@@ -26,10 +26,24 @@ func main() {
 		go testserver.StartTestServer(backendPort)
 	}
 
-	// 2. Setup the Proxy
-	proxyServer, err := proxy.NewProxy(backendURL)
-	if err != nil {
-		log.Fatalf("❌ Failed to create proxy: %v", err)
+	// 2. Setup the Multi-Target Proxy
+	mtProxy := proxy.NewMultiTargetProxy()
+
+	// Default Route
+	if err := mtProxy.AddRoute("/", backendURL); err != nil {
+		log.Fatalf("❌ Failed to add default route: %v", err)
+	}
+
+	// Add a second route for demonstration
+	apiV2URL := getEnv("API_V2_URL", "")
+	if apiV2URL == "" {
+		apiV2Port := "9001"
+		apiV2URL = "http://localhost:" + apiV2Port
+		log.Printf("📦 Starting second mock backend for /api/v2 on :%s", apiV2Port)
+		go testserver.StartTestServer(apiV2Port)
+	}
+	if err := mtProxy.AddRoute("/api/v2", apiV2URL); err != nil {
+		log.Fatalf("❌ Failed to add /api/v2 route: %v", err)
 	}
 
 	// Initialize Middlewares
@@ -49,7 +63,7 @@ func main() {
 	mux.HandleFunc("/unblock", blocklist.AdminHandler)
 
 	// Apply Middlewares to the Proxy
-	proxyWithMiddleware := middleware.Chain(proxyServer,
+	proxyWithMiddleware := middleware.Chain(mtProxy,
 		func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				middleware.IncrementTotal()
