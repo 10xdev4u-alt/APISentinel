@@ -2,17 +2,33 @@ package proxy
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Target represents a single backend server.
 type Target struct {
 	URL   *url.URL
 	Proxy *httputil.ReverseProxy
+	Alive bool
+	mu    sync.RWMutex
+}
+
+func (t *Target) SetAlive(alive bool) {
+	t.mu.Lock()
+	t.Alive = alive
+	t.mu.Unlock()
+}
+
+func (t *Target) IsAlive() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.Alive
 }
 
 // LoadBalancer manages multiple targets for a single route.
@@ -42,27 +58,68 @@ func NewLoadBalancer(urls []string) (*LoadBalancer, error) {
 			log.Printf("⚖️  LB: Forwarding [%s] %s to %s", req.Method, req.URL.Path, u)
 		}
 
-		lb.targets = append(lb.targets, &Target{
+		target := &Target{
 			URL:   targetURL,
 			Proxy: proxy,
-		})
+			Alive: true, // Assume alive initially
+		}
+		lb.targets = append(lb.targets, target)
 	}
 
+	// Start health checker
+	go lb.healthCheck()
+
 	return lb, nil
+}
+
+func (lb *LoadBalancer) healthCheck() {
+	ticker := time.NewTicker(2 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			lb.mu.RLock()
+			for _, t := range lb.targets {
+				alive := isAlive(t.URL)
+				t.SetAlive(alive)
+				if !alive {
+					log.Printf("🏥 Health Check: Target %s is DOWN", t.URL)
+				}
+			}
+			lb.mu.RUnlock()
+		}
+	}
+}
+
+func isAlive(u *url.URL) bool {
+	timeout := 2 * time.Second
+	conn, err := net.DialTimeout("tcp", u.Host, timeout)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	lb.mu.RLock()
 	defer lb.mu.RUnlock()
 
-	if len(lb.targets) == 0 {
-		http.Error(w, "Service Unavailable: No backends found", http.StatusServiceUnavailable)
+	// Filter only healthy targets
+	var healthyTargets []*Target
+	for _, t := range lb.targets {
+		if t.IsAlive() {
+			healthyTargets = append(healthyTargets, t)
+		}
+	}
+
+	if len(healthyTargets) == 0 {
+		http.Error(w, "Service Unavailable: No healthy backends found", http.StatusServiceUnavailable)
 		return
 	}
 
 	// Round Robin logic: increment and wrap
-	idx := atomic.AddUint64(&lb.current, 1) % uint64(len(lb.targets))
-	target := lb.targets[idx]
+	idx := atomic.AddUint64(&lb.current, 1) % uint64(len(healthyTargets))
+	target := healthyTargets[idx]
 
 	target.Proxy.ServeHTTP(w, r)
 }
