@@ -25,21 +25,26 @@ type SecurityInspector struct {
 	patterns []Pattern
 }
 
-func NewSecurityInspector() *SecurityInspector {
-	return &SecurityInspector{
-		patterns: []Pattern{
-			{
-				Name:    "XSS Detection",
-				Regexp:  regexp.MustCompile(`(?i)<script.*?>|javascript:|onload=`),
-				Message: "Malicious <script> or javascript: detected.",
-			},
-			{
-				Name:    "SQL Injection Detection",
-				Regexp:  regexp.MustCompile(`(?i)(union.*select|insert.*into|drop.*table|truncate.*table|' or 1=1|--|#)`),
-				Message: "SQL injection attempt detected.",
-			},
-		},
+func NewSecurityInspector(enableXSS, enableSQLi bool) *SecurityInspector {
+	si := &SecurityInspector{}
+
+	if enableXSS {
+		si.patterns = append(si.patterns, Pattern{
+			Name:    "XSS Detection",
+			Regexp:  regexp.MustCompile(`(?i)<script.*?>|javascript:|onload=`),
+			Message: "Malicious <script> or javascript: detected.",
+		})
 	}
+
+	if enableSQLi {
+		si.patterns = append(si.patterns, Pattern{
+			Name:    "SQL Injection Detection",
+			Regexp:  regexp.MustCompile(`(?i)(union.*select|insert.*into|drop.*table|truncate.*table|' or 1=1|--|#)`),
+			Message: "SQL injection attempt detected.",
+		})
+	}
+
+	return si
 }
 
 func (si *SecurityInspector) Middleware(next http.Handler) http.Handler {

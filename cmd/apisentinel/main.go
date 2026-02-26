@@ -2,10 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
-	"os"
 
+	"github.com/princetheprogrammer/apisentinel/internal/config"
 	"github.com/princetheprogrammer/apisentinel/internal/logger"
 	"github.com/princetheprogrammer/apisentinel/internal/middleware"
 	"github.com/princetheprogrammer/apisentinel/internal/proxy"
@@ -13,65 +14,66 @@ import (
 )
 
 func main() {
-	// Initialize Audit Logger
-	if err := logger.InitAuditLogger("audit.log"); err != nil {
+	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+	flag.Parse()
+
+	// 1. Load Configuration
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
+		log.Printf("⚠️ Config file not found or invalid (%s). Using defaults.", *configPath)
+		cfg = &config.Config{
+			Server: config.ServerConfig{Port: 8080, AdminKey: "secret-sentinel-key", RateLimit: 10, AuditLog: "audit.log"},
+			Security: config.SecurityConfig{EnableXSS: true, EnableSQLi: true, EnableDLP: true},
+		}
+	}
+
+	// 2. Initialize Audit Logger
+	if err := logger.InitAuditLogger(cfg.Server.AuditLog); err != nil {
 		log.Fatalf("❌ Failed to initialize audit logger: %v", err)
 	}
 	defer logger.Close()
 
-	// Flags and Env Vars
-	proxyPort := getEnv("PROXY_PORT", "8080")
-	backendURL := getEnv("BACKEND_URL", "")
-	rateLimit := flag.Int("limit", 10, "Requests per minute")
-	flag.Parse()
-
-	// If no backend is provided, start the mock one for convenience
-	if backendURL == "" {
-		backendPort := "9000"
-		backendURL = "http://localhost:" + backendPort
-		log.Printf("📦 No BACKEND_URL provided. Starting mock backend on :%s", backendPort)
-		go testserver.StartTestServer(backendPort)
-	}
-
-	// 2. Setup the Multi-Target Proxy
+	// 3. Setup the Multi-Target Proxy
 	mtProxy := proxy.NewMultiTargetProxy()
-
-	// Default Route
-	if err := mtProxy.AddRoute("/", backendURL); err != nil {
-		log.Fatalf("❌ Failed to add default route: %v", err)
+	if len(cfg.Routes) == 0 {
+		log.Println("📦 No routes in config. Starting mock backends.")
+		// Default Mock Setup
+		p1, p2 := "9000", "9001"
+		go testserver.StartTestServer(p1)
+		go testserver.StartTestServer(p2)
+		mtProxy.AddRoute("/", "http://localhost:"+p1)
+		mtProxy.AddRoute("/api/v2", "http://localhost:"+p2)
+	} else {
+		for _, r := range cfg.Routes {
+			log.Printf("🛣️  Adding route: %s -> %s", r.Path, r.Target)
+			if err := mtProxy.AddRoute(r.Path, r.Target); err != nil {
+				log.Fatalf("❌ Failed to add route %s: %v", r.Path, err)
+			}
+		}
 	}
 
-	// Add a second route for demonstration
-	apiV2URL := getEnv("API_V2_URL", "")
-	if apiV2URL == "" {
-		apiV2Port := "9001"
-		apiV2URL = "http://localhost:" + apiV2Port
-		log.Printf("📦 Starting second mock backend for /api/v2 on :%s", apiV2Port)
-		go testserver.StartTestServer(apiV2Port)
-	}
-	if err := mtProxy.AddRoute("/api/v2", apiV2URL); err != nil {
-		log.Fatalf("❌ Failed to add /api/v2 route: %v", err)
+	// 4. Initialize Middlewares
+	rl := middleware.NewRateLimiter(cfg.Server.RateLimit)
+	inspector := middleware.NewSecurityInspector(cfg.Security.EnableXSS, cfg.Security.EnableSQLi)
+	blocklist := middleware.NewIPBlocklist(cfg.Server.AdminKey)
+	
+	var dlp *middleware.DLPMiddleware
+	if cfg.Security.EnableDLP {
+		dlp = middleware.NewDLPMiddleware()
 	}
 
-	// Initialize Middlewares
-	rl := middleware.NewRateLimiter(*rateLimit)
-	inspector := middleware.NewSecurityInspector()
-	dlp := middleware.NewDLPMiddleware()
-	adminKey := getEnv("ADMIN_KEY", "secret-sentinel-key")
-	blocklist := middleware.NewIPBlocklist(adminKey)
-
-	// 3. Start the API Sentinel Proxy Server
+	// 5. Start the API Sentinel Proxy Server
+	proxyPort := fmt.Sprintf("%d", cfg.Server.Port)
 	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
-	log.Printf("🛡️ Forwarding traffic to: %s", backendURL)
 
-	// Create a multiplexer to handle /stats separately
+	// Create a multiplexer
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats", middleware.StatsHandler)
 	mux.HandleFunc("/block", blocklist.AdminHandler)
 	mux.HandleFunc("/unblock", blocklist.AdminHandler)
 
-	// Apply Middlewares to the Proxy
-	proxyWithMiddleware := middleware.Chain(mtProxy,
+	// Build the middleware chain
+	mws := []middleware.Middleware{
 		func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				middleware.IncrementTotal()
@@ -79,11 +81,20 @@ func main() {
 			})
 		},
 		blocklist.Middleware,
-		dlp.Middleware,
+	}
+
+	if dlp != nil {
+		mws = append(mws, dlp.Middleware)
+	}
+
+	mws = append(mws,
 		inspector.Middleware,
 		rl.Middleware,
 		middleware.SecurityHeaders,
 	)
+
+	// Apply Middlewares to the Proxy
+	proxyWithMiddleware := middleware.Chain(mtProxy, mws...)
 
 	// Route everything else to the proxy
 	mux.Handle("/", proxyWithMiddleware)
@@ -91,11 +102,4 @@ func main() {
 	if err := http.ListenAndServe(":"+proxyPort, mux); err != nil {
 		log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
 	}
-}
-
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
 }

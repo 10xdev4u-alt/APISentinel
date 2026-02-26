@@ -1,0 +1,18 @@
+# API Sentinel Configuration
+
+server:
+  port: 8080
+  admin_key: "secret-sentinel-key"
+  rate_limit: 10
+  audit_log: "audit.log"
+
+routes:
+  - path: "/api/v2"
+    target: "http://localhost:9001"
+  - path: "/"
+    target: "http://localhost:9000"
+
+security:
+  enable_xss: true
+  enable_sqli: true
+  enable_dlp: true
