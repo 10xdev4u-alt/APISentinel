@@ -1,7 +1,31 @@
 package main
 
-import "fmt"
+import (
+	"log"
+	"net/http"
+
+	"github.com/princetheprogrammer/apisentinel/internal/proxy"
+	"github.com/princetheprogrammer/apisentinel/internal/testserver"
+)
 
 func main() {
-	fmt.Println("🛡️ API Sentinel: Initialized. Ready to cook!")
+	// 1. Start a mock backend server in a goroutine
+	backendPort := "9000"
+	go testserver.StartTestServer(backendPort)
+
+	// 2. Setup the Proxy
+	targetURL := "http://localhost:" + backendPort
+	proxyServer, err := proxy.NewProxy(targetURL)
+	if err != nil {
+		log.Fatalf("❌ Failed to create proxy: %v", err)
+	}
+
+	// 3. Start the API Sentinel Proxy Server
+	proxyPort := "8080"
+	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
+	log.Printf("🛡️ Forwarding traffic to: %s", targetURL)
+
+	if err := http.ListenAndServe(":"+proxyPort, proxyServer); err != nil {
+		log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
+	}
 }
