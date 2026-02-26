@@ -35,6 +35,8 @@ func main() {
 	// Initialize Middlewares
 	rl := middleware.NewRateLimiter(*rateLimit)
 	inspector := middleware.NewSecurityInspector()
+	adminKey := getEnv("ADMIN_KEY", "secret-sentinel-key")
+	blocklist := middleware.NewIPBlocklist(adminKey)
 
 	// 3. Start the API Sentinel Proxy Server
 	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
@@ -43,6 +45,8 @@ func main() {
 	// Create a multiplexer to handle /stats separately
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats", middleware.StatsHandler)
+	mux.HandleFunc("/block", blocklist.AdminHandler)
+	mux.HandleFunc("/unblock", blocklist.AdminHandler)
 
 	// Apply Middlewares to the Proxy
 	proxyWithMiddleware := middleware.Chain(proxyServer,
@@ -52,6 +56,7 @@ func main() {
 				next.ServeHTTP(w, r)
 			})
 		},
+		blocklist.Middleware,
 		inspector.Middleware,
 		rl.Middleware,
 		middleware.SecurityHeaders,
