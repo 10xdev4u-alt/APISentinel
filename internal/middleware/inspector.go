@@ -2,11 +2,13 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 )
 
 // Pattern defines a malicious signature to look for.
@@ -75,11 +77,46 @@ func (si *SecurityInspector) inspectBody(w http.ResponseWriter, r *http.Request)
 	// Restore the body for the next handler
 	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
+	contentType := r.Header.Get("Content-Type")
+
+	// 1. Check for JSON
+	if strings.Contains(contentType, "application/json") {
+		var jsonData interface{}
+		if err := json.Unmarshal(bodyBytes, &jsonData); err == nil {
+			if si.inspectValue(jsonData) {
+				si.block(w, "JSON Body")
+				return true
+			}
+			return false // JSON was safe
+		}
+	}
+
+	// 2. Default String Match for other body types
 	if si.isMalicious(string(bodyBytes)) {
 		si.block(w, "Body")
 		return true
 	}
 
+	return false
+}
+
+func (si *SecurityInspector) inspectValue(v interface{}) bool {
+	switch val := v.(type) {
+	case string:
+		return si.isMalicious(val)
+	case []interface{}:
+		for _, item := range val {
+			if si.inspectValue(item) {
+				return true
+			}
+		}
+	case map[string]interface{}:
+		for k, v := range val {
+			if si.isMalicious(k) || si.inspectValue(v) {
+				return true
+			}
+		}
+	}
 	return false
 }
 

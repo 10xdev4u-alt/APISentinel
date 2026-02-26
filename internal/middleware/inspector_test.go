@@ -46,6 +46,12 @@ func TestSecurityInspector(t *testing.T) {
 			body:           "username=admin' OR 1=1 --",
 			expectedStatus: http.StatusForbidden,
 		},
+		{
+			name:           "Nested JSON XSS",
+			url:            "/api/data",
+			body:           `{"user": {"name": "Prince", "bio": "<script>alert(1)</script>"}}`,
+			expectedStatus: http.StatusForbidden,
+		},
 	}
 
 	for _, tt := range tests {
