@@ -46,12 +46,17 @@ func main() {
 		p1, p2 := "9000", "9001"
 		go testserver.StartTestServer(p1)
 		go testserver.StartTestServer(p2)
-		mtProxy.AddRoute("/", "http://localhost:"+p1)
-		mtProxy.AddRoute("/api/v2", "http://localhost:"+p2)
+		mtProxy.AddRoute("/", []string{"http://localhost:" + p1})
+		mtProxy.AddRoute("/api/v2", []string{"http://localhost:" + p2})
 	} else {
 		for _, r := range cfg.Routes {
-			log.Printf("🛣️  Adding route: %s -> %s", r.Path, r.Target)
-			if err := mtProxy.AddRoute(r.Path, r.Target); err != nil {
+			targets := r.Targets
+			if len(targets) == 0 && r.Target != "" {
+				targets = []string{r.Target}
+			}
+			
+			log.Printf("🛣️  Adding route: %s -> %v", r.Path, targets)
+			if err := mtProxy.AddRoute(r.Path, targets); err != nil {
 				log.Fatalf("❌ Failed to add route %s: %v", r.Path, err)
 			}
 		}

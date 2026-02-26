@@ -9,33 +9,24 @@ import (
 	"strings"
 )
 
-// MultiTargetProxy routes requests to different backends based on path prefixes.
+// MultiTargetProxy routes requests to different LoadBalancers based on path prefixes.
 type MultiTargetProxy struct {
-	Routes map[string]*httputil.ReverseProxy
+	Routes map[string]*LoadBalancer
 }
 
 func NewMultiTargetProxy() *MultiTargetProxy {
 	return &MultiTargetProxy{
-		Routes: make(map[string]*httputil.ReverseProxy),
+		Routes: make(map[string]*LoadBalancer),
 	}
 }
 
-func (m *MultiTargetProxy) AddRoute(prefix string, target string) error {
-	targetURL, err := url.Parse(target)
+func (m *MultiTargetProxy) AddRoute(prefix string, targets []string) error {
+	lb, err := NewLoadBalancer(targets)
 	if err != nil {
 		return err
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-
-	// Custom Director to handle path stripping if needed
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		log.Printf("🛡️ API Sentinel: Forwarding [%s] %s to %s", req.Method, req.URL.Path, target)
-	}
-
-	m.Routes[prefix] = proxy
+	m.Routes[prefix] = lb
 	return nil
 }
 

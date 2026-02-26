@@ -1,14 +1,16 @@
 server:
   port: 8080
-  admin_key: "my-custom-key"
-  rate_limit: 5
-  audit_log: "custom-audit.log"
+  admin_key: "secret-sentinel-key"
+  rate_limit: 10
+  audit_log: "audit.log"
 
 routes:
   - path: "/"
-    target: "http://localhost:9000"
+    targets:
+      - "http://localhost:9000"
+      - "http://localhost:9002"
 
 security:
   enable_xss: true
-  enable_sqli: false
+  enable_sqli: true
   enable_dlp: true

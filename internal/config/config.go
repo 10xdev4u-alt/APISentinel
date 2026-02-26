@@ -21,8 +21,9 @@ type ServerConfig struct {
 }
 
 type RouteConfig struct {
-	Path   string `yaml:"path"`
-	Target string `yaml:"target"`
+	Path    string   `yaml:"path"`
+	Target  string   `yaml:"target"`  // Singular (backward compatibility)
+	Targets []string `yaml:"targets"` // Plural (for load balancing)
 }
 
 type SecurityConfig struct {
