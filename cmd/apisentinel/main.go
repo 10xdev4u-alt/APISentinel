@@ -71,6 +71,7 @@ func main() {
 	mux.HandleFunc("/stats", middleware.StatsHandler)
 	mux.HandleFunc("/block", blocklist.AdminHandler)
 	mux.HandleFunc("/unblock", blocklist.AdminHandler)
+	mux.HandleFunc("/dashboard", middleware.DashboardHandler(blocklist, cfg.Server.AuditLog))
 
 	// Build the middleware chain
 	mws := []middleware.Middleware{

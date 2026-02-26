@@ -1,1 +1,2 @@
 {"timestamp":"2026-02-26T19:25:40.280523277Z","source_ip":"[::1]:46892","method":"GET","path":"/","violation_type":"XSS Detection","details":"Blocked in: Query"}
+{"timestamp":"2026-02-26T19:26:39.668091344Z","source_ip":"[::1]:49116","method":"GET","path":"/","violation_type":"XSS Detection","details":"Blocked in: Query"}
