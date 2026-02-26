@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/princetheprogrammer/apisentinel/internal/config"
 	"github.com/princetheprogrammer/apisentinel/internal/logger"
@@ -100,7 +105,35 @@ func main() {
 	// Route everything else to the proxy
 	mux.Handle("/", proxyWithMiddleware)
 
-	if err := http.ListenAndServe(":"+proxyPort, mux); err != nil {
-		log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
+	// --- 6. Start Server with Graceful Shutdown ---
+	server := &http.Server{
+		Addr:    ":" + proxyPort,
+		Handler: mux,
 	}
+
+	// Channel to listen for interrupt signals (Ctrl+C, SIGTERM)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Run server in a goroutine
+	go func() {
+		log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
+		}
+	}()
+
+	// Wait for signal
+	<-stop
+	log.Println("\n🛑 Shutdown signal received. Cleaning up...")
+
+	// Create a context with timeout for shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("❌ Server Shutdown Failed: %v", err)
+	}
+
+	log.Println("✅ API Sentinel Shutdown Gracefully. See you next time, Prince!")
 }
