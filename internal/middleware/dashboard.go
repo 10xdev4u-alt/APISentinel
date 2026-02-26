@@ -66,6 +66,7 @@ const dashboardTemplate = `
                 <tr>
                     <th>TIMESTAMP</th>
                     <th>REQUEST ID</th>
+                    <th>LOCATION</th>
                     <th>SOURCE IP</th>
                     <th>VIOLATION</th>
                     <th>PATH</th>
@@ -76,6 +77,7 @@ const dashboardTemplate = `
                 <tr>
                     <td>{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
                     <td><code>{{.RequestID}}</code></td>
+                    <td>{{.Location}}</td>
                     <td>{{.SourceIP}}</td>
                     <td class="violation">{{.ViolationType}}</td>
                     <td>{{.Path}}</td>

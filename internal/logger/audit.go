@@ -2,6 +2,7 @@ package logger
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -13,6 +14,7 @@ type AuditEvent struct {
 	Timestamp     time.Time `json:"timestamp"`
 	RequestID     string    `json:"request_id"`
 	SourceIP      string    `json:"source_ip"`
+	Location      string    `json:"location"`
 	Method        string    `json:"method"`
 	Path          string    `json:"path"`
 	ViolationType string    `json:"violation_type"`
@@ -41,34 +43,43 @@ func InitAuditLogger(filepath string) error {
 	return nil
 }
 
-// LogEvent writes a structured security event to the audit log.
+// LogEvent writes a structured security event to the audit log (Asynchronously).
 func LogEvent(requestID, ip, method, path, violation, details string) {
 	if globalAuditLogger == nil {
-		return // Silently skip if not initialized
-	}
-
-	event := AuditEvent{
-		Timestamp:     time.Now().UTC(),
-		RequestID:     requestID,
-		SourceIP:      ip,
-		Method:        method,
-		Path:          path,
-		ViolationType: violation,
-		Details:       details,
-	}
-
-	jsonData, err := json.Marshal(event)
-	if err != nil {
-		log.Printf("❌ Failed to marshal audit event: %v", err)
 		return
 	}
 
-	globalAuditLogger.mu.Lock()
-	defer globalAuditLogger.mu.Unlock()
+	// Run in background so we don't slow down the proxy
+	go func() {
+		locStr := "Unknown"
+		if loc, err := GetLocation(ip); err == nil {
+			locStr = fmt.Sprintf("%s, %s", loc.City, loc.Country)
+		}
 
-	if _, err := globalAuditLogger.file.Write(append(jsonData, '\n')); err != nil {
-		log.Printf("❌ Failed to write audit log: %v", err)
-	}
+		event := AuditEvent{
+			Timestamp:     time.Now().UTC(),
+			RequestID:     requestID,
+			SourceIP:      ip,
+			Location:      locStr,
+			Method:        method,
+			Path:          path,
+			ViolationType: violation,
+			Details:       details,
+		}
+
+		jsonData, err := json.Marshal(event)
+		if err != nil {
+			log.Printf("❌ Failed to marshal audit event: %v", err)
+			return
+		}
+
+		globalAuditLogger.mu.Lock()
+		defer globalAuditLogger.mu.Unlock()
+
+		if _, err := globalAuditLogger.file.Write(append(jsonData, '\n')); err != nil {
+			log.Printf("❌ Failed to write audit log: %v", err)
+		}
+	}()
 }
 
 // Close closes the audit log file.
