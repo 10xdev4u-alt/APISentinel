@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"sync"
+
+	"github.com/princetheprogrammer/apisentinel/internal/logger"
 )
 
 // IPBlocklist manages a set of blocked IP addresses.
@@ -34,6 +36,7 @@ func (bl *IPBlocklist) Middleware(next http.Handler) http.Handler {
 
 		if isBlocked {
 			log.Printf("🚫 Blocked request from blacklisted IP: %s", ip)
+			logger.LogEvent(ip, r.Method, r.URL.Path, "IP Blocklist", "Access denied by admin blocklist")
 			IncrementBlocked()
 			http.Error(w, "Forbidden: Your IP is blacklisted", http.StatusForbidden)
 			return

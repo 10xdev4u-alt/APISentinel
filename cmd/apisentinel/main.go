@@ -6,12 +6,19 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/princetheprogrammer/apisentinel/internal/logger"
 	"github.com/princetheprogrammer/apisentinel/internal/middleware"
 	"github.com/princetheprogrammer/apisentinel/internal/proxy"
 	"github.com/princetheprogrammer/apisentinel/internal/testserver"
 )
 
 func main() {
+	// Initialize Audit Logger
+	if err := logger.InitAuditLogger("audit.log"); err != nil {
+		log.Fatalf("❌ Failed to initialize audit logger: %v", err)
+	}
+	defer logger.Close()
+
 	// Flags and Env Vars
 	proxyPort := getEnv("PROXY_PORT", "8080")
 	backendURL := getEnv("BACKEND_URL", "")

@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/princetheprogrammer/apisentinel/internal/logger"
 )
 
 // Pattern defines a malicious signature to look for.
@@ -43,8 +45,8 @@ func NewSecurityInspector() *SecurityInspector {
 func (si *SecurityInspector) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. Inspect Query Parameters
-		if si.inspectQuery(r) {
-			si.block(w, "Query")
+		if matched, pattern := si.inspectQuery(r); matched {
+			si.block(w, r, "Query", pattern)
 			return
 		}
 
@@ -58,7 +60,7 @@ func (si *SecurityInspector) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func (si *SecurityInspector) inspectQuery(r *http.Request) bool {
+func (si *SecurityInspector) inspectQuery(r *http.Request) (bool, string) {
 	return si.isMalicious(r.URL.RawQuery)
 }
 
@@ -83,8 +85,8 @@ func (si *SecurityInspector) inspectBody(w http.ResponseWriter, r *http.Request)
 	if strings.Contains(contentType, "application/json") {
 		var jsonData interface{}
 		if err := json.Unmarshal(bodyBytes, &jsonData); err == nil {
-			if si.inspectValue(jsonData) {
-				si.block(w, "JSON Body")
+			if matched, pattern := si.inspectValue(jsonData); matched {
+				si.block(w, r, "JSON Body", pattern)
 				return true
 			}
 			return false
@@ -97,8 +99,8 @@ func (si *SecurityInspector) inspectBody(w http.ResponseWriter, r *http.Request)
 		if err == nil {
 			for _, v := range values {
 				for _, val := range v {
-					if si.isMalicious(val) {
-						si.block(w, "Form Body")
+					if matched, pattern := si.isMalicious(val); matched {
+						si.block(w, r, "Form Body", pattern)
 						return true
 					}
 				}
@@ -108,37 +110,40 @@ func (si *SecurityInspector) inspectBody(w http.ResponseWriter, r *http.Request)
 	}
 
 	// 3. Default String Match for other body types
-	if si.isMalicious(string(bodyBytes)) {
-		si.block(w, "Body")
+	if matched, pattern := si.isMalicious(string(bodyBytes)); matched {
+		si.block(w, r, "Body", pattern)
 		return true
 	}
 
 	return false
 }
 
-func (si *SecurityInspector) inspectValue(v interface{}) bool {
+func (si *SecurityInspector) inspectValue(v interface{}) (bool, string) {
 	switch val := v.(type) {
 	case string:
 		return si.isMalicious(val)
 	case []interface{}:
 		for _, item := range val {
-			if si.inspectValue(item) {
-				return true
+			if matched, pattern := si.inspectValue(item); matched {
+				return true, pattern
 			}
 		}
 	case map[string]interface{}:
 		for k, v := range val {
-			if si.isMalicious(k) || si.inspectValue(v) {
-				return true
+			if matched, pattern := si.isMalicious(k); matched {
+				return true, pattern
+			}
+			if matched, pattern := si.inspectValue(v); matched {
+				return true, pattern
 			}
 		}
 	}
-	return false
+	return false, ""
 }
 
-func (si *SecurityInspector) isMalicious(data string) bool {
+func (si *SecurityInspector) isMalicious(data string) (bool, string) {
 	if data == "" {
-		return false
+		return false, ""
 	}
 
 	// Decode URL-encoded strings for inspection
@@ -150,14 +155,24 @@ func (si *SecurityInspector) isMalicious(data string) bool {
 	for _, p := range si.patterns {
 		if p.Regexp.MatchString(decoded) {
 			log.Printf("🛑 BLOCKED [%s]: Found in input", p.Name)
-			return true
+			return true, p.Name
 		}
 	}
-	return false
+	return false, ""
 }
 
-func (si *SecurityInspector) block(w http.ResponseWriter, source string) {
+func (si *SecurityInspector) block(w http.ResponseWriter, r *http.Request, source, pattern string) {
 	log.Printf("🛡️ API Sentinel: Blocking request from %s due to malicious content", source)
+	
+	// Get IP
+	ip := r.RemoteAddr
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		ip = forwarded
+	}
+
+	// Log to Audit File
+	logger.LogEvent(ip, r.Method, r.URL.Path, pattern, "Blocked in: "+source)
+
 	IncrementBlocked()
 	http.Error(w, "Forbidden: Malicious activity detected", http.StatusForbidden)
 }

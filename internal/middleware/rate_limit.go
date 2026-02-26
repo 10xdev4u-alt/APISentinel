@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/princetheprogrammer/apisentinel/internal/logger"
 )
 
 // RateLimiter simple in-memory rate limiter.
@@ -49,6 +51,7 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		if count > rl.limit {
 			log.Printf("⚠️ Rate Limit Exceeded for IP: %s", ip)
+			logger.LogEvent(ip, r.Method, r.URL.Path, "Rate Limit Exceeded", "Client exceeded allowed requests per minute")
 			IncrementBlocked()
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return
