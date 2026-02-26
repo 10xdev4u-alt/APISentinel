@@ -23,6 +23,7 @@ func main() {
 
 	// Initialize Middlewares
 	rl := middleware.NewRateLimiter(10) // 10 requests per minute
+	inspector := middleware.NewSecurityInspector()
 
 	// 3. Start the API Sentinel Proxy Server
 	proxyPort := "8080"
@@ -31,6 +32,7 @@ func main() {
 
 	// Apply Middlewares
 	handler := middleware.Chain(proxyServer,
+		inspector.Middleware,
 		rl.Middleware,
 		middleware.SecurityHeaders,
 	)
