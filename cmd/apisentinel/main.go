@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/princetheprogrammer/apisentinel/internal/middleware"
 	"github.com/princetheprogrammer/apisentinel/internal/proxy"
 	"github.com/princetheprogrammer/apisentinel/internal/testserver"
 )
@@ -25,7 +26,12 @@ func main() {
 	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
 	log.Printf("🛡️ Forwarding traffic to: %s", targetURL)
 
-	if err := http.ListenAndServe(":"+proxyPort, proxyServer); err != nil {
+	// Apply Middlewares
+	handler := middleware.Chain(proxyServer,
+		middleware.SecurityHeaders,
+	)
+
+	if err := http.ListenAndServe(":"+proxyPort, handler); err != nil {
 		log.Fatalf("❌ API Sentinel Proxy Error: %v", err)
 	}
 }
