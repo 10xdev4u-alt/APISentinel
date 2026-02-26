@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,18 +23,18 @@ type ServerConfig struct {
 
 type RouteConfig struct {
 	Path    string   `yaml:"path"`
-	Target  string   `yaml:"target"`  // Singular (backward compatibility)
-	Targets []string `yaml:"targets"` // Plural (for load balancing)
+	Target  string   `yaml:"target"`
+	Targets []string `yaml:"targets"`
 }
 
 type SecurityConfig struct {
 	EnableXSS  bool   `yaml:"enable_xss"`
 	EnableSQLi bool   `yaml:"enable_sqli"`
 	EnableDLP  bool   `yaml:"enable_dlp"`
-	DLPAction  string `yaml:"dlp_action"` // "block" or "mask"
+	DLPAction  string `yaml:"dlp_action"`
 }
 
-// LoadConfig reads the YAML configuration file.
+// LoadConfig reads the YAML configuration file and applies environment overrides.
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -45,7 +46,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Set some defaults if missing
+	// Apply Defaults
 	if cfg.Server.Port == 0 {
 		cfg.Server.Port = 8080
 	}
@@ -56,5 +57,30 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Server.AuditLog = "audit.log"
 	}
 
+	// Apply Environment Overrides
+	cfg.applyEnvOverrides()
+
 	return &cfg, nil
+}
+
+func (c *Config) applyEnvOverrides() {
+	if val := os.Getenv("SENTINEL_PORT"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			c.Server.Port = i
+		}
+	}
+	if val := os.Getenv("SENTINEL_ADMIN_KEY"); val != "" {
+		c.Server.AdminKey = val
+	}
+	if val := os.Getenv("SENTINEL_RATE_LIMIT"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil {
+			c.Server.RateLimit = i
+		}
+	}
+	if val := os.Getenv("SENTINEL_AUDIT_LOG"); val != "" {
+		c.Server.AuditLog = val
+	}
+	if val := os.Getenv("SENTINEL_DLP_ACTION"); val != "" {
+		c.Security.DLPAction = val
+	}
 }
