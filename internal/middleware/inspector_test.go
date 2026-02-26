@@ -52,6 +52,12 @@ func TestSecurityInspector(t *testing.T) {
 			body:           `{"user": {"name": "Prince", "bio": "<script>alert(1)</script>"}}`,
 			expectedStatus: http.StatusForbidden,
 		},
+		{
+			name:           "Form Data SQLi",
+			url:            "/submit",
+			body:           "username=admin&comment=drop table users--",
+			expectedStatus: http.StatusForbidden,
+		},
 	}
 
 	for _, tt := range tests {

@@ -87,11 +87,27 @@ func (si *SecurityInspector) inspectBody(w http.ResponseWriter, r *http.Request)
 				si.block(w, "JSON Body")
 				return true
 			}
-			return false // JSON was safe
+			return false
 		}
 	}
 
-	// 2. Default String Match for other body types
+	// 2. Check for Form Data
+	if strings.Contains(contentType, "application/x-www-form-urlencoded") {
+		values, err := url.ParseQuery(string(bodyBytes))
+		if err == nil {
+			for _, v := range values {
+				for _, val := range v {
+					if si.isMalicious(val) {
+						si.block(w, "Form Body")
+						return true
+					}
+				}
+			}
+			return false
+		}
+	}
+
+	// 3. Default String Match for other body types
 	if si.isMalicious(string(bodyBytes)) {
 		si.block(w, "Body")
 		return true
