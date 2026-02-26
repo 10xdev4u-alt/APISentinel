@@ -41,31 +41,46 @@ func NewSecurityInspector() *SecurityInspector {
 func (si *SecurityInspector) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 1. Inspect Query Parameters
-		if si.isMalicious(r.URL.RawQuery) {
+		if si.inspectQuery(r) {
 			si.block(w, "Query")
 			return
 		}
 
 		// 2. Inspect Request Body (if any)
-		if r.Body != nil && r.ContentLength > 0 {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				log.Printf("❌ Failed to read request body: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			}
-
-			// Restore the body for the next handler
-			r.Body = io.NopCloser(bytes.NewBuffer(body))
-
-			if si.isMalicious(string(body)) {
-				si.block(w, "Body")
-				return
-			}
+		if si.inspectBody(w, r) {
+			// inspectBody handles the blocking and error responses internally if it returns true
+			return
 		}
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (si *SecurityInspector) inspectQuery(r *http.Request) bool {
+	return si.isMalicious(r.URL.RawQuery)
+}
+
+func (si *SecurityInspector) inspectBody(w http.ResponseWriter, r *http.Request) bool {
+	if r.Body == nil || r.ContentLength == 0 {
+		return false
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("❌ Failed to read request body: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return true // Stop processing on error
+	}
+
+	// Restore the body for the next handler
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	if si.isMalicious(string(bodyBytes)) {
+		si.block(w, "Body")
+		return true
+	}
+
+	return false
 }
 
 func (si *SecurityInspector) isMalicious(data string) bool {
