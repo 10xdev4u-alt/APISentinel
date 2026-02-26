@@ -21,6 +21,9 @@ func main() {
 		log.Fatalf("❌ Failed to create proxy: %v", err)
 	}
 
+	// Initialize Middlewares
+	rl := middleware.NewRateLimiter(10) // 10 requests per minute
+
 	// 3. Start the API Sentinel Proxy Server
 	proxyPort := "8080"
 	log.Printf("🛡️ API Sentinel Proxy starting on :%s", proxyPort)
@@ -28,6 +31,7 @@ func main() {
 
 	// Apply Middlewares
 	handler := middleware.Chain(proxyServer,
+		rl.Middleware,
 		middleware.SecurityHeaders,
 	)
 
