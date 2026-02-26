@@ -65,7 +65,8 @@ func (dlp *DLPMiddleware) Middleware(next http.Handler) http.Handler {
 		for _, p := range dlp.patterns {
 			if p.Regexp.Match(responseBody) {
 				log.Printf("🛑 DLP ALERT [%s]: Blocked outgoing response to %s", p.Name, r.RemoteAddr)
-				logger.LogEvent(r.RemoteAddr, r.Method, r.URL.Path, "DLP Violation: "+p.Name, "Backend attempted to leak sensitive data")
+				requestID := r.Header.Get("X-Request-ID")
+				logger.LogEvent(requestID, r.RemoteAddr, r.Method, r.URL.Path, "DLP Violation: "+p.Name, "Backend attempted to leak sensitive data")
 
 				w.Header().Del("Content-Length")
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")

@@ -36,7 +36,8 @@ func (bl *IPBlocklist) Middleware(next http.Handler) http.Handler {
 
 		if isBlocked {
 			log.Printf("🚫 Blocked request from blacklisted IP: %s", ip)
-			logger.LogEvent(ip, r.Method, r.URL.Path, "IP Blocklist", "Access denied by admin blocklist")
+			requestID := r.Header.Get("X-Request-ID")
+			logger.LogEvent(requestID, ip, r.Method, r.URL.Path, "IP Blocklist", "Access denied by admin blocklist")
 			IncrementBlocked()
 			http.Error(w, "Forbidden: Your IP is blacklisted", http.StatusForbidden)
 			return

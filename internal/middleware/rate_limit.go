@@ -51,7 +51,8 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 
 		if count > rl.limit {
 			log.Printf("⚠️ Rate Limit Exceeded for IP: %s", ip)
-			logger.LogEvent(ip, r.Method, r.URL.Path, "Rate Limit Exceeded", "Client exceeded allowed requests per minute")
+			requestID := r.Header.Get("X-Request-ID")
+			logger.LogEvent(requestID, ip, r.Method, r.URL.Path, "Rate Limit Exceeded", "Client exceeded allowed requests per minute")
 			IncrementBlocked()
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return

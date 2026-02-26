@@ -176,7 +176,8 @@ func (si *SecurityInspector) block(w http.ResponseWriter, r *http.Request, sourc
 	}
 
 	// Log to Audit File
-	logger.LogEvent(ip, r.Method, r.URL.Path, pattern, "Blocked in: "+source)
+	requestID := r.Header.Get("X-Request-ID")
+	logger.LogEvent(requestID, ip, r.Method, r.URL.Path, pattern, "Blocked in: "+source)
 
 	IncrementBlocked()
 	http.Error(w, "Forbidden: Malicious activity detected", http.StatusForbidden)

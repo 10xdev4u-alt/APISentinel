@@ -11,6 +11,7 @@ import (
 // AuditEvent represents a single blocked security event.
 type AuditEvent struct {
 	Timestamp     time.Time `json:"timestamp"`
+	RequestID     string    `json:"request_id"`
 	SourceIP      string    `json:"source_ip"`
 	Method        string    `json:"method"`
 	Path          string    `json:"path"`
@@ -41,13 +42,14 @@ func InitAuditLogger(filepath string) error {
 }
 
 // LogEvent writes a structured security event to the audit log.
-func LogEvent(ip, method, path, violation, details string) {
+func LogEvent(requestID, ip, method, path, violation, details string) {
 	if globalAuditLogger == nil {
 		return // Silently skip if not initialized
 	}
 
 	event := AuditEvent{
 		Timestamp:     time.Now().UTC(),
+		RequestID:     requestID,
 		SourceIP:      ip,
 		Method:        method,
 		Path:          path,
